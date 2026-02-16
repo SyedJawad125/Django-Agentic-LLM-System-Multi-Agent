@@ -90,6 +90,7 @@ INSTALLED_APPS = [
     'apps.myapp',
     'apps.notification',
     'apps.images',
+    'apps.rag',
 
     "drf_spectacular",
     "drf_spectacular_sidecar",
@@ -357,4 +358,139 @@ CKEDITOR_5_CONFIGS = {
             ]
         }
     }
+}
+
+
+
+
+
+# ============================================
+# ADD THESE TO YOUR config/settings.py
+# ============================================
+
+# Add this near the top (after imports)
+# SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-CHANGE-THIS-IN-PRODUCTION')
+
+# ============================================
+# RAG & LLM Configuration (Add at the end)
+# ============================================
+
+# LLM Provider Configuration
+GROQ_API_KEY = os.environ.get('GROQ_API_KEY', '')
+GROQ_MODEL = os.environ.get('GROQ_MODEL', 'llama-3.1-70b-versatile')
+
+# OpenAI (Optional)
+OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
+OPENAI_MODEL = os.environ.get('OPENAI_MODEL', 'gpt-4-turbo-preview')
+
+# Embedding Configuration
+EMBEDDING_MODEL = os.environ.get('EMBEDDING_MODEL', 'sentence-transformers/all-MiniLM-L6-v2')
+EMBEDDING_DIMENSION = int(os.environ.get('EMBEDDING_DIMENSION', 384))
+
+# Vector Store Configuration
+VECTOR_STORE_TYPE = os.environ.get('VECTOR_STORE_TYPE', 'chromadb')
+CHROMADB_PERSIST_DIR = BASE_DIR / 'data' / 'chromadb'
+CHROMADB_COLLECTION_NAME = os.environ.get('CHROMADB_COLLECTION_NAME', 'rag_documents')
+
+# Web Search Configuration
+TAVILY_API_KEY = os.environ.get('TAVILY_API_KEY', '')
+USE_WEB_SEARCH = os.environ.get('USE_WEB_SEARCH', 'True').lower() == 'true'
+
+# Multi-Agent Configuration
+MAX_AGENT_ITERATIONS = int(os.environ.get('MAX_AGENT_ITERATIONS', 10))
+AGENT_TIMEOUT = int(os.environ.get('AGENT_TIMEOUT', 60))
+USE_LANGGRAPH = os.environ.get('USE_LANGGRAPH', 'True').lower() == 'true'
+
+# RAG Configuration
+CHUNK_SIZE = int(os.environ.get('CHUNK_SIZE', 800))
+CHUNK_OVERLAP = int(os.environ.get('CHUNK_OVERLAP', 100))
+TOP_K_RESULTS = int(os.environ.get('TOP_K_RESULTS', 5))
+RELEVANCE_THRESHOLD = float(os.environ.get('RELEVANCE_THRESHOLD', 0.3))
+
+# Graph Database (Optional - for advanced features)
+USE_KNOWLEDGE_GRAPH = os.environ.get('USE_KNOWLEDGE_GRAPH', 'False').lower() == 'true'
+NEO4J_URI = os.environ.get('NEO4J_URI', 'bolt://localhost:7687')
+NEO4J_USER = os.environ.get('NEO4J_USER', 'neo4j')
+NEO4J_PASSWORD = os.environ.get('NEO4J_PASSWORD', '')
+
+# Create necessary directories
+CHROMADB_PERSIST_DIR.mkdir(parents=True, exist_ok=True)
+(BASE_DIR / 'logs').mkdir(parents=True, exist_ok=True)
+(BASE_DIR / 'data').mkdir(parents=True, exist_ok=True)
+
+# ============================================
+# Update REST_FRAMEWORK configuration
+# ============================================
+
+# Modify your existing REST_FRAMEWORK to include:
+REST_FRAMEWORK = {
+    'DEFAULT_PERMISSION_CLASSES': (
+        'rest_framework.permissions.IsAuthenticated'
+    ),
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'utils.authenticate.CustomAuthentication',
+    ),
+    'DATETIME_FORMAT': "%Y-%m-%d %H:%M:%S",
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    
+    # Add these for RAG endpoints:
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 20,
+    'DEFAULT_RENDERER_CLASSES': [
+        'rest_framework.renderers.JSONRenderer',
+        'rest_framework.renderers.BrowsableAPIRenderer',
+    ],
+    'DEFAULT_PARSER_CLASSES': [
+        'rest_framework.parsers.JSONParser',
+        'rest_framework.parsers.MultiPartParser',
+        'rest_framework.parsers.FormParser',
+    ],
+}
+
+# ============================================
+# Logging Configuration (Add this)
+# ============================================
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+        'file': {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': BASE_DIR / 'logs' / 'rag.log',
+            'maxBytes': 1024 * 1024 * 10,  # 10 MB
+            'backupCount': 5,
+            'formatter': 'verbose',
+        },
+    },
+    'root': {
+        'handlers': ['console', 'file'],
+        'level': os.environ.get('LOG_LEVEL', 'INFO'),
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'apps.rag': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+    },
 }
