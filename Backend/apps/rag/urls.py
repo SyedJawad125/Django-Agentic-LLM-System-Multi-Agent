@@ -8,10 +8,10 @@ app_name = 'rag'
 
 urlpatterns = [
     # Query endpoints
-    path('query/', views.query_rag, name='query'),
+    path('v1/query/', views.query_rag, name='query'),
     
     # Document management
-    path('upload/', views.upload_document, name='upload'),
+    path('v1/upload/', views.upload_document, name='upload'),
     path('documents/', views.list_documents, name='documents-list'),
     path('documents/<uuid:document_id>/', views.get_document, name='document-detail'),
     path('documents/<uuid:document_id>/delete/', views.delete_document, name='document-delete'),

@@ -64,7 +64,7 @@ def query_rag(request):
     """
     Main RAG query endpoint with multi-agent support.
     
-    POST /api/rag/query/
+    POST /api/rag/v1/query/
     """
     serializer = QueryRequestSerializer(data=request.data)
     
@@ -167,7 +167,7 @@ def upload_document(request):
     """
     Upload and process document.
     
-    POST /api/rag/upload/
+    POST /api/rag/v1/upload/
     """
     if 'file' not in request.FILES:
         return Response(
