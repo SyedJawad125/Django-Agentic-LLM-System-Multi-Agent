@@ -833,10 +833,10 @@ const AdminSideNavbarCom = () => {
       color: 'blue'
     },
     {
-      id: 'posts',
-      label: 'Blog Posts',
+      id: 'rag',
+      label: 'LLM RAG',
       icon: FileText,
-      path: '/blogpostpage',
+      path: '/rag',
       roles: ['admin', 'editor'],
       color: 'purple'
     },
