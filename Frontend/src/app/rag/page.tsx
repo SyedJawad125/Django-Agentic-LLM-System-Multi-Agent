@@ -15,7 +15,7 @@ const AdminDashboard = () => {
       <div className="flex-1 w-[82%] bg-black overflow-auto -ml-6 mr" >
         <div className="w-full h-full p-6">
           <Rag />
-        </div>m,lp;ll
+        </div>
       </div>
     </div>
   )
