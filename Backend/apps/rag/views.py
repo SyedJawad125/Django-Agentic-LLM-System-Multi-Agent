@@ -162,11 +162,85 @@ def query_rag(request):
 # Document Management
 # ============================================
 
+# @api_view(['POST'])
+# def upload_document(request):
+#     """
+#     Upload and process document.
+    
+#     POST /api/rag/v1/upload/
+#     """
+#     if 'file' not in request.FILES:
+#         return Response(
+#             {'error': 'No file provided'},
+#             status=status.HTTP_400_BAD_REQUEST
+#         )
+    
+#     file = request.FILES['file']
+#     metadata = request.data.get('metadata', {})
+    
+#     start_time = time.time()
+    
+#     try:
+#         logger.info(f"[Upload] Processing: {file.name}")
+        
+#         # Create document record
+#         document = Document.objects.create(
+#             id=uuid.uuid4(),
+#             filename=file.name,
+#             content_type=file.content_type or 'application/octet-stream',
+#             size=file.size,
+#             status='processing',
+#             metadata=metadata if isinstance(metadata, dict) else {}
+#         )
+        
+#         # Process document
+#         processor = DocumentProcessor(
+#             vector_store=get_vector_store(),
+#             embedding_service=get_embedding_service()
+#         )
+        
+#         result = asyncio.run(processor.process_document(
+#             file=file,
+#             document_id=str(document.id)
+#         ))
+        
+#         # Update document
+#         document.status = 'completed'
+#         document.chunks_count = result['chunks_created']
+#         document.processed_at = timezone.now()
+#         document.processing_time = time.time() - start_time
+#         document.save()
+        
+#         logger.info(f"[Upload] Completed: {result['chunks_created']} chunks")
+        
+#         return Response({
+#             'document_id': str(document.id),
+#             'filename': document.filename,
+#             'status': 'success',
+#             'chunks_created': result['chunks_created'],
+#             'processing_time': f"{document.processing_time:.1f} seconds",
+#             'message': f"Document '{file.name}' processed successfully"
+#         }, status=status.HTTP_201_CREATED)
+        
+#     except Exception as e:
+#         logger.error(f"[Upload] Failed: {e}", exc_info=True)
+#         if 'document' in locals():
+#             document.status = 'failed'
+#             document.save()
+#         return Response(
+#             {'error': f'Document upload failed: {str(e)}'},
+#             status=status.HTTP_500_INTERNAL_SERVER_ERROR
+#         )
+
+
+# ============================================================
+# Replace your upload_document view in views.py with this
+# ============================================================
+
 @api_view(['POST'])
 def upload_document(request):
     """
     Upload and process document.
-    
     POST /api/rag/v1/upload/
     """
     if 'file' not in request.FILES:
@@ -174,16 +248,25 @@ def upload_document(request):
             {'error': 'No file provided'},
             status=status.HTTP_400_BAD_REQUEST
         )
-    
+
     file = request.FILES['file']
     metadata = request.data.get('metadata', {})
-    
+
+    # ── Validate file extension ──
+    allowed = ['.pdf', '.txt', '.docx', '.csv']
+    filename_lc = file.name.lower()
+    if not any(filename_lc.endswith(ext) for ext in allowed):
+        return Response(
+            {'error': f'Unsupported file type. Allowed: {", ".join(allowed)}'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
     start_time = time.time()
-    
+
     try:
-        logger.info(f"[Upload] Processing: {file.name}")
-        
-        # Create document record
+        logger.info(f"[Upload] Processing: {file.name} ({file.size} bytes)")
+
+        # Create document record with 'processing' status
         document = Document.objects.create(
             id=uuid.uuid4(),
             filename=file.name,
@@ -192,40 +275,72 @@ def upload_document(request):
             status='processing',
             metadata=metadata if isinstance(metadata, dict) else {}
         )
-        
+
         # Process document
         processor = DocumentProcessor(
             vector_store=get_vector_store(),
             embedding_service=get_embedding_service()
         )
-        
+
         result = asyncio.run(processor.process_document(
             file=file,
             document_id=str(document.id)
         ))
-        
-        # Update document
+
+        chunks_created = result.get('chunks_created', 0)
+
+        # ── CRITICAL CHECK: warn if no chunks were created ──
+        if chunks_created == 0:
+            document.status = 'failed'
+            document.chunks_count = 0
+            document.processed_at = timezone.now()
+            document.processing_time = time.time() - start_time
+            document.metadata = {
+                **document.metadata,
+                'error': 'No text could be extracted. The PDF may be image/scan-based. Try a text-based PDF or convert to TXT.'
+            }
+            document.save()
+
+            return Response(
+                {
+                    'error': (
+                        f"Document '{file.name}' was uploaded but no text could be extracted. "
+                        "Possible reasons:\n"
+                        "1. The PDF is image/scan-based (not text-based)\n"
+                        "2. The file is empty or corrupted\n"
+                        "3. The file format is not readable\n\n"
+                        "Solutions:\n"
+                        "- Copy-paste the CV content into a .txt file and upload that\n"
+                        "- Use an online PDF-to-text converter first\n"
+                        "- Make sure the PDF was created from a Word document (not scanned)"
+                    )
+                },
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY
+            )
+
+        # ── Success ──
         document.status = 'completed'
-        document.chunks_count = result['chunks_created']
+        document.chunks_count = chunks_created
         document.processed_at = timezone.now()
         document.processing_time = time.time() - start_time
         document.save()
-        
-        logger.info(f"[Upload] Completed: {result['chunks_created']} chunks")
-        
+
+        logger.info(f"[Upload] Done: {chunks_created} chunks from '{file.name}'")
+
         return Response({
             'document_id': str(document.id),
             'filename': document.filename,
             'status': 'success',
-            'chunks_created': result['chunks_created'],
+            'chunks_created': chunks_created,
             'processing_time': f"{document.processing_time:.1f} seconds",
-            'message': f"Document '{file.name}' processed successfully"
+            'message': f"Document '{file.name}' processed successfully with {chunks_created} chunks"
         }, status=status.HTTP_201_CREATED)
-        
+
     except Exception as e:
         logger.error(f"[Upload] Failed: {e}", exc_info=True)
         if 'document' in locals():
             document.status = 'failed'
+            document.metadata = {**document.metadata, 'error': str(e)}
             document.save()
         return Response(
             {'error': f'Document upload failed: {str(e)}'},
