@@ -229,3 +229,133 @@ def initialize_services():
     get_embedding_service()
     get_vector_store()
     logger.info("[Services] All services initialized successfully")
+
+
+
+import os
+import re
+import csv
+import json
+import hashlib
+import pandas as pd
+from pathlib import Path
+from typing import List, Dict, Any, Optional, Tuple
+from dataclasses import dataclass, field
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  DATA STRUCTURES
+# ─────────────────────────────────────────────────────────────────────────────
+
+@dataclass
+class Document:
+    """A single indexable unit for ChromaDB / any vector store."""
+    text: str                          # Natural language text to embed
+    metadata: Dict[str, Any]           # Filterable fields
+    doc_id: str                        # Unique ID
+    source_file: str                   # Original filename
+    chunk_index: int = 0              # Position within file
+    row_index: Optional[int] = None   # For tabular data: which row
+
+
+@dataclass
+class ProcessingResult:
+    """Result returned after processing any file."""
+    documents: List[Document]
+    file_type: str
+    total_rows: int
+    columns_detected: List[str]
+    warnings: List[str] = field(default_factory=list)
+
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  STEP 5 — CHROMADB INDEXER (Generic — uses document metadata automatically)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class GenericChromaIndexer:
+    """
+    Indexes any processed documents into ChromaDB.
+    Metadata is stored automatically — no hardcoding.
+    """
+
+    def __init__(self, collection_name: str = "rag_collection"):
+        self.collection_name = collection_name
+        self._collection = None
+
+    def get_collection(self):
+        """Lazy init — only import chromadb when needed."""
+        if self._collection is None:
+            import chromadb
+            client = chromadb.PersistentClient(path="./chroma_db")
+            self._collection = client.get_or_create_collection(
+                name=self.collection_name,
+                metadata={"hnsw:space": "cosine"}
+            )
+        return self._collection
+
+    def index_documents(self, result: ProcessingResult, batch_size: int = 100):
+        """Index all documents from a ProcessingResult into ChromaDB."""
+        collection = self.get_collection()
+        documents = result.documents
+
+        print(f"\n🔗 Indexing {len(documents)} documents...")
+
+        # Sanitize metadata — ChromaDB only accepts str, int, float, bool
+        def sanitize_meta(meta: Dict) -> Dict:
+            clean = {}
+            for k, v in meta.items():
+                if isinstance(v, (str, int, float, bool)):
+                    clean[str(k)] = v
+                else:
+                    clean[str(k)] = str(v)
+            return clean
+
+        # Batch insert
+        for i in range(0, len(documents), batch_size):
+            batch = documents[i:i + batch_size]
+            collection.upsert(
+                ids=[doc.doc_id for doc in batch],
+                documents=[doc.text for doc in batch],
+                metadatas=[sanitize_meta(doc.metadata) for doc in batch],
+            )
+            print(f"   Indexed batch {i // batch_size + 1} / {(len(documents) - 1) // batch_size + 1}")
+
+        print(f"✅ Indexed {len(documents)} documents into '{self.collection_name}'")
+
+    def query(
+        self, 
+        query_text: str, 
+        top_k: int = 5,
+        filter_file: Optional[str] = None
+    ) -> List[Dict]:
+        """
+        Generic query — works regardless of what files were indexed.
+        Optional: filter results to a specific source file.
+        """
+        collection = self.get_collection()
+        
+        where_clause = None
+        if filter_file:
+            where_clause = {"source_file": {"$eq": filter_file}}
+
+        results = collection.query(
+            query_texts=[query_text],
+            n_results=top_k,
+            where=where_clause,
+            include=["documents", "metadatas", "distances"]
+        )
+
+        output = []
+        if results and results["documents"]:
+            for doc, meta, dist in zip(
+                results["documents"][0],
+                results["metadatas"][0],
+                results["distances"][0]
+            ):
+                output.append({
+                    "text": doc,
+                    "metadata": meta,
+                    "relevance_score": round(1 - dist, 4)
+                })
+        return output
