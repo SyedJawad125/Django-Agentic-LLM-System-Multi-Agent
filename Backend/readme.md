@@ -11,7 +11,7 @@ If *Windows* environment hit, open up **Docker** and then execute **migg.bat**
 **docker-compose up --build**
 
 
-
+---------------------------------------------
 ADVANCED (THIS IMPRESSES PROFESSORS)
 
 Add:
@@ -25,7 +25,7 @@ Multi-step reasoning
 
 
 
-
+---------------------------------------------
 
 Best Project for RL (Honest Answer)
 🥇 PROJECT 2: Agentic LLM System (BEST for RL)
@@ -95,7 +95,7 @@ OR heuristic reward system (acceptable for industry)
 
 
 
-
+---------------------------------------------
 
 Pro-Level Upgrade (If You Want 10/10 Profile)
 
